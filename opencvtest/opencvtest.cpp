@@ -1,78 +1,76 @@
 // opencvtest.cpp : Defines the entry point for the console application.
 //
+//Uncomment the following line if you are compiling this code in Visual Studio
 #include "stdafx.h"
+
+#include <opencv2/opencv.hpp>
 #include <iostream>
-#include "opencv2/highgui/highgui.hpp"
-#include "opencv2/imgproc/imgproc.hpp"
 
 using namespace cv;
 using namespace std;
 
-int main(int argc, char** argv)
+int main(int argc, char* argv[])
 {
-	VideoCapture cap(0); //capture the video from web cam
+	//Open the default video camera
+	VideoCapture cap(0);
+	int lowThreshold;
+	int const max_lowThreshold = 100;
+	int ratio = 3;
+	int kernel_size = 3;
 
-	if (!cap.isOpened())  // if not success, exit program
+
+	// if not success, exit program
+	if (cap.isOpened() == false)
 	{
-		cout << "Cannot open the web cam" << endl;
+		cout << "Cannot open the video camera" << endl;
+		cin.get(); //wait for any key press
 		return -1;
 	}
 
-	namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
+	double dWidth = cap.get(CAP_PROP_FRAME_WIDTH); //get the width of frames of the video
+	double dHeight = cap.get(CAP_PROP_FRAME_HEIGHT); //get the height of frames of the video
 
-	int iLowH = 0;
-	int iHighH = 179;
+	cout << "Resolution of the video : " << dWidth << " x " << dHeight << endl;
 
-	int iLowS = 0;
-	int iHighS = 255;
+	string window_name = "My Camera Feed";
+	namedWindow(window_name); //create a window called "My Camera Feed"
 
-	int iLowV = 0;
-	int iHighV = 255;
-
-	//Create trackbars in "Control" window
-	cvCreateTrackbar("LowH", "Control", &iLowH, 179); //Hue (0 - 179)
-	cvCreateTrackbar("HighH", "Control", &iHighH, 179);
-
-	cvCreateTrackbar("LowS", "Control", &iLowS, 255); //Saturation (0 - 255)
-	cvCreateTrackbar("HighS", "Control", &iHighS, 255);
-
-	cvCreateTrackbar("LowV", "Control", &iLowV, 255); //Value (0 - 255)
-	cvCreateTrackbar("HighV", "Control", &iHighV, 255);
+	createTrackbar("Min Threshold", window_name, &lowThreshold, max_lowThreshold);
 
 	while (true)
 	{
-		Mat imgOriginal;
+		Mat frame, greyFrame, dst, detected_edges;
+		bool bSuccess = cap.read(frame); // read a new frame from video 
 
-		bool bSuccess = cap.read(imgOriginal); // read a new frame from video
-
-		if (!bSuccess) //if not success, break loop
+										 //Breaking the while loop if the frames cannot be captured
+		if (bSuccess == false)
 		{
-			cout << "Cannot read a frame from video stream" << endl;
+			cout << "Video camera is disconnected" << endl;
+			cin.get(); //Wait for any key press
 			break;
 		}
+		//convert image to greyscale
+		cvtColor(frame, greyFrame, CV_BGR2GRAY);
 
-		Mat imgHSV;
+		/// Reduce noise with a kernel 3x3
+		blur(greyFrame, detected_edges, Size(3,3));
 
-		cvtColor(imgOriginal, imgHSV, COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
+		/// Canny detector
+		Canny(detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size);
 
-		Mat imgThresholded;
+		/// Using Canny's output as a mask, we display our result
+		dst = Scalar::all(0);
 
-		inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
+		frame.copyTo(dst, detected_edges);
 
-																									  //morphological opening (remove small objects from the foreground)
-		erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-		dilate(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+		//show the frame in the created window
+		imshow(window_name, dst);
 
-		//morphological closing (fill small holes in the foreground)
-		dilate(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-		erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-
-		imshow("Thresholded Image", imgThresholded); //show the thresholded image
-		imshow("Original", imgOriginal); //show the original image
-
-		if (waitKey(30) == 27) //wait for 'esc' key press for 30ms. If 'esc' key is pressed, break loop
+		//wait for for 10 ms until any key is pressed.  
+		//If the 'Esc' key is pressed, break the while loop.
+		if (waitKey(10) == 27)
 		{
-			cout << "esc key is pressed by user" << endl;
+			cout << "Esc key is pressed by user. Stoppig the video" << endl;
 			break;
 		}
 	}
